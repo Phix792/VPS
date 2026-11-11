@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trade Panel</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --text:#e8eaf0; --muted:#8b93a7;
+          --buy:#1f9d62; --sell:#d94b4b; --accent:#4c8dff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui, sans-serif; }
+  main { max-width:480px; margin:0 auto; padding:16px; }
+  h1 { font-size:20px; margin:8px 0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  input, select { width:100%; padding:10px; border-radius:8px; border:1px solid var(--line);
+                  background:#0f1115; color:var(--text); font-size:16px; }
+  .row { display:flex; gap:10px; }
+  .row > div { flex:1; }
+  button { cursor:pointer; border:0; border-radius:10px; padding:14px; font-size:17px; font-weight:600; color:#fff; width:100%; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .buy { background:var(--buy); } .sell { background:var(--sell); } .plain { background:var(--accent); font-size:15px; padding:10px; }
+  .stats { display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:14px; }
+  .stats span { color:var(--muted); display:block; font-size:12px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:99px; font-size:12px; background:#2a2f3a; }
+  .badge.demo { background:#1f9d62; } .badge.real { background:#d94b4b; }
+  #log { font:13px/1.5 ui-monospace, monospace; white-space:pre-wrap; color:var(--muted); max-height:180px; overflow:auto; }
+  table { width:100%; border-collapse:collapse; font-size:14px; } td,th { padding:4px 2px; text-align:left; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Trade Panel</h1>
+
+  <div class="card">
+    <label for="url">Bridge server URL (https)</label>
+    <input id="url" placeholder="https://your-bridge.example.com" autocomplete="off">
+    <label for="key">API key (kept only for this browser tab)</label>
+    <input id="key" type="password" placeholder="Paste your API key" autocomplete="off">
+    <div style="margin-top:12px"><button class="plain" id="connect">Connect</button></div>
+  </div>
+
+  <div class="card" id="acct" hidden>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <strong id="login"></strong><span class="badge" id="mode"></span>
+    </div>
+    <div class="stats">
+      <div><span>Balance</span><b id="bal">-</b></div>
+      <div><span>Equity</span><b id="eq">-</b></div>
+      <div><span>Free margin</span><b id="fm">-</b></div>
+      <div><span>Server</span><b id="srv">-</b></div>
+    </div>
+  </div>
+
+  <div class="card" id="ticket" hidden>
+    <label for="symbol">Symbol</label>
+    <select id="symbol"></select>
+    <div class="row">
+      <div><label for="vol">Lots</label><input id="vol" type="number" step="0.01" min="0.01" value="0.01"></div>
+      <div><label for="sl">Stop loss (pips)</label><input id="sl" type="number" step="1" min="1" value="20"></div>
+      <div><label for="tp">Take profit (pips)</label><input id="tp" type="number" step="1" min="0" value="40"></div>
+    </div>
+    <div class="row" style="margin-top:16px">
+      <button class="sell" id="sell">SELL</button>
+      <button class="buy" id="buy">BUY</button>
+    </div>
+  </div>
+
+  <div class="card" id="posCard" hidden>
+    <strong>Open positions</strong>
+    <table id="pos"></table>
+  </div>
+
+  <div class="card"><div id="log">Not connected.</div></div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const log = msg => { $("log").textContent = new Date().toLocaleTimeString() + "  " + msg + "\n" + $("log").textContent; };
+const base = () => $("url").value.trim().replace(/\/+$/, "");
+
+try { $("url").value = localStorage.getItem("bridgeUrl") || ""; } catch (e) {}
+try { $("key").value = sessionStorage.getItem("bridgeKey") || ""; } catch (e) {}
+
+async function api(path, opts = {}) {
+  const res = await fetch(base() + path, {
+    ...opts,
+    headers: { "Content-Type": "application/json", "X-API-Key": $("key").value.trim() },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
+  return data;
+}
+
+async function refresh() {
+  const a = await api("/account");
+  $("acct").hidden = false; $("posCard").hidden = false;
+  $("login").textContent = "Account " + a.login;
+  $("mode").textContent = a.trade_mode.toUpperCase();
+  $("mode").className = "badge " + a.trade_mode;
+  $("bal").textContent = a.balance.toFixed(2) + " " + a.currency;
+  $("eq").textContent = a.equity.toFixed(2) + " " + a.currency;
+  $("fm").textContent = a.margin_free.toFixed(2);
+  $("srv").textContent = a.server;
+  $("pos").innerHTML = a.positions.length
+    ? "<tr><th>Symbol</th><th>Side</th><th>Lots</th><th>P/L</th></tr>" +
+      a.positions.map(p => `<tr><td>${p.symbol}</td><td>${p.side}</td><td>${p.volume}</td><td>${p.profit.toFixed(2)}</td></tr>`).join("")
+    : "<tr><td>No open positions</td></tr>";
+}
+
+$("connect").onclick = async () => {
+  try {
+    localStorage.setItem("bridgeUrl", base());
+    sessionStorage.setItem("bridgeKey", $("key").value.trim());
+  } catch (e) {}
+  try {
+    const c = await api("/config");
+    $("symbol").innerHTML = c.symbols.map(s => `<option>${s}</option>`).join("");
+    $("vol").max = c.max_volume;
+    $("ticket").hidden = false;
+    await refresh();
+    log("Connected. Max lot " + c.max_volume + ", " + c.max_trades_per_day + " trades per day.");
+  } catch (e) { log("Connect failed: " + e.message); }
+};
+
+async function send(side) {
+  const body = {
+    symbol: $("symbol").value, side,
+    volume: parseFloat($("vol").value),
+    sl_pips: parseFloat($("sl").value),
+    tp_pips: parseFloat($("tp").value) || 0,
+  };
+  const ok = confirm(`${side.toUpperCase()} ${body.volume} lots ${body.symbol}\nSL ${body.sl_pips} pips, TP ${body.tp_pips || "none"}\n\nSend this order?`);
+  if (!ok) return;
+  $("buy").disabled = $("sell").disabled = true;
+  try {
+    const r = await api("/trade", { method: "POST", body: JSON.stringify(body) });
+    log(`FILLED ${side} ${r.volume} ${body.symbol} @ ${r.price} (order ${r.order})`);
+    await refresh();
+  } catch (e) { log("REJECTED: " + e.message); }
+  finally { $("buy").disabled = $("sell").disabled = false; }
+}
+$("buy").onclick = () => send("buy");
+$("sell").onclick = () => send("sell");
+</script>
+</body>
+</html>

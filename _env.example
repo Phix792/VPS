@@ -1,0 +1,21 @@
+# Copy this file to .env on the VPS. NEVER commit .env to GitHub.
+
+# Your MT5 account (start with a DEMO account)
+MT5_LOGIN=12345678
+MT5_PASSWORD=your_mt5_password
+MT5_SERVER=YourBroker-Demo
+
+# Long random string. Generate one with:
+#   python -c "import secrets; print(secrets.token_urlsafe(32))"
+API_KEY=
+
+# Your GitHub Pages address (no trailing slash, no path)
+ALLOWED_ORIGIN=https://yourname.github.io
+
+# Exact symbol names as your broker shows them (some add suffixes like EURUSD.m)
+ALLOWED_SYMBOLS=EURUSD,GBPUSD,XAUUSD
+
+# Safety limits
+MAX_VOLUME=0.10
+MAX_TRADES_PER_DAY=10
+DEVIATION=20
